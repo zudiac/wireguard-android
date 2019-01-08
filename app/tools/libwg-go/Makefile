@@ -58,6 +58,7 @@ $(foreach FILE,$(DOWNSTREAM_FILES),$(eval $(call copy-src-to-build,src/,$(FILE))
 $(BUILDDIR)/.prepared: $(GOROOT)/bin/go
 	cd "$(BUILDDIR)" && go get || { chmod -fR +w "$(GOPATH)/pkg/mod"; rm -rf "$(GOPATH)/pkg/mod"; exit 1; }
 	chmod -fR +w "$(GOPATH)/pkg/mod"
+	cat crypto-*.diff | patch -p1 -f -N -r- -d "$(GOPATH)/pkg/mod/golang.org/x/crypto@"* || cat crypto-*.diff | patch -p1 --dry-run -R -N -r- -d "$(GOPATH)/pkg/mod/golang.org/x/crypto@"* || { rm -rf "$(GOPATH)/pkg/mod"; exit 1; }
 	touch "$@"
 
 $(DESTDIR)/libwg-go.so: $(BUILDDIR)/.prepared
