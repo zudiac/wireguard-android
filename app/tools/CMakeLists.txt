@@ -8,8 +8,9 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_LIBRARY_OUTPUT_DIRECTORY}")
 # Work around https://github.com/android-ndk/ndk/issues/602
 set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fuse-ld=gold")
 
-add_executable(libwg-quick.so wireguard/src/tools/wg-quick/android.c ndk-compat/compat.c)
-target_compile_options(libwg-quick.so PUBLIC -O3 -std=gnu11 -Wall -pedantic -Wno-missing-field-initializers -include ${CMAKE_CURRENT_SOURCE_DIR}/ndk-compat/compat.h -DWG_PACKAGE_NAME=\"${ANDROID_PACKAGE_NAME}\")
+add_executable(libwg-quick.so wireguard/src/tools/wg-quick/android/wg-quick.c ndk-compat/compat.c wireguard/src/tools/wg-quick/android/binder_ndk.c wireguard/src/tools/wg-quick/android/dnsresolver.c)
+target_compile_options(libwg-quick.so PUBLIC -O3 -std=gnu11 -Wall -pedantic -Wno-missing-field-initializers -Wno-gnu-statement-expression -Wno-gnu-conditional-omitted-operand -I ${CMAKE_CURRENT_SOURCE_DIR}/wireguard/src/tools/wg-quick/android -include ${CMAKE_CURRENT_SOURCE_DIR}/ndk-compat/compat.h -DWG_PACKAGE_NAME=\"${ANDROID_PACKAGE_NAME}\")
+target_link_libraries(libwg-quick.so -ldl)
 
 file(GLOB WG_SOURCES wireguard/src/tools/*.c libmnl/src/*.c ndk-compat/compat.c)
 add_executable(libwg.so ${WG_SOURCES})
