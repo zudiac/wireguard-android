@@ -59,11 +59,6 @@ android {
             }
         }
     }
-    externalNativeBuild {
-        cmake {
-            path 'tools/CMakeLists.txt'
-        }
-    }
 }
 
 ext {
@@ -84,6 +79,8 @@ ext {
 }
 
 dependencies {
+    implementation project(':libwg')
+
     implementation "androidx.annotation:annotation:$annotationsVersion"
     implementation "androidx.appcompat:appcompat:$appcompatVersion"
     implementation "androidx.cardview:cardview:$cardviewVersion"
