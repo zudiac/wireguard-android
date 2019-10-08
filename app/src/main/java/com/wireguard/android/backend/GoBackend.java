@@ -20,7 +20,6 @@ import com.wireguard.android.model.Tunnel;
 import com.wireguard.android.model.Tunnel.State;
 import com.wireguard.android.model.Tunnel.Statistics;
 import com.wireguard.android.util.ExceptionLoggers;
-import com.wireguard.android.util.SharedLibraryLoader;
 import com.wireguard.config.Config;
 import com.wireguard.config.InetNetwork;
 import com.wireguard.config.Peer;
@@ -36,7 +35,7 @@ import java.util.concurrent.TimeoutException;
 
 import java9.util.concurrent.CompletableFuture;
 
-public final class GoBackend implements Backend {
+public final class GoBackend extends BackendNative implements Backend {
     private static final String TAG = "WireGuard/" + GoBackend.class.getSimpleName();
     private static CompletableFuture<VpnService> vpnService = new CompletableFuture<>();
 
@@ -45,21 +44,8 @@ public final class GoBackend implements Backend {
     private int currentTunnelHandle = -1;
 
     public GoBackend(final Context context) {
-        SharedLibraryLoader.loadSharedLibrary(context, "wg-go");
         this.context = context;
     }
-
-    private static native String wgGetConfig(int handle);
-
-    private static native int wgGetSocketV4(int handle);
-
-    private static native int wgGetSocketV6(int handle);
-
-    private static native void wgTurnOff(int handle);
-
-    private static native int wgTurnOn(String ifName, int tunFd, String settings);
-
-    private static native String wgVersion();
 
     @Override
     public Config applyConfig(final Tunnel tunnel, final Config config) throws Exception {

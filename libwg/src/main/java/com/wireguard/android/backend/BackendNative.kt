@@ -7,6 +7,8 @@ package com.wireguard.android.backend
 
 public open class BackendNative {
 
+    public external fun wgGetConfig(handle: Int): String
+
     public external fun wgGetSocketV4(handle: Int): Int
 
     public external fun wgGetSocketV6(handle: Int): Int
