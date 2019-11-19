@@ -31,6 +31,11 @@ android {
 }
 
 dependencies {
+    implementation project(":config")
+
+    implementation "android.arch.lifecycle:extensions:1.1.1"
     implementation "androidx.annotation:annotation:$annotationsVersion"
     implementation "androidx.appcompat:appcompat:$appcompatVersion"
+
+    implementation "net.sourceforge.streamsupport:android-retrofuture:$streamsupportVersion"
 }
