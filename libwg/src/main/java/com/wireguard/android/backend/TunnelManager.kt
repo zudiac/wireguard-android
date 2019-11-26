@@ -9,10 +9,15 @@ import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import android.net.VpnService.prepare
+import android.os.SystemClock
+import android.util.Pair
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.Observer
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.wireguard.config.Config
+import com.wireguard.crypto.Key
+import com.wireguard.crypto.KeyFormatException
+import java.util.HashMap
 
 class TunnelManager {
 
@@ -78,6 +83,54 @@ class TunnelManager {
         return currentTunnel?.state == Tunnel.State.Up
     }
 
+    fun getConfig(tunnel: Tunnel): String? {
+        return backend.getConfig(tunnel)
+    }
+
+    fun getStatistics(tunnel: Tunnel): Statistics {
+        val stats = Statistics()
+        if (tunnel !== currentTunnel) {
+            return stats
+        }
+        val config = backend.getConfig(tunnel) ?: return stats
+        var key: Key? = null
+        var rx: Long = 0
+        var tx: Long = 0
+        for (line in config.split("\\n".toRegex()).dropLastWhile { it.isEmpty() }.toTypedArray()) {
+            if (line.startsWith("public_key=")) {
+                key?.let { stats.add(it, rx, tx) }
+                rx = 0
+                tx = 0
+                key = try {
+                    Key.fromHex(line.substring(11))
+                } catch (ignored: KeyFormatException) {
+                    null
+                }
+
+            } else if (line.startsWith("rx_bytes=")) {
+                if (key == null)
+                    continue
+                rx = try {
+                    java.lang.Long.parseLong(line.substring(9))
+                } catch (ignored: NumberFormatException) {
+                    0
+                }
+
+            } else if (line.startsWith("tx_bytes=")) {
+                if (key == null)
+                    continue
+                tx = try {
+                    java.lang.Long.parseLong(line.substring(9))
+                } catch (ignored: NumberFormatException) {
+                    0
+                }
+
+            }
+        }
+        key?.let { stats.add(it, rx, tx) }
+        return stats
+    }
+
     public class VpnService : android.net.VpnService() {
         val builder: Builder
             get() {
@@ -118,4 +171,45 @@ fun VpnService.Builder.applyConfig(config: Config){
     setMtu(config.getInterface().mtu.orElse(1280))
 
     setBlocking(true)
+}
+
+class Statistics {
+    private var lastTouched = SystemClock.elapsedRealtime()
+    private val peerBytes = HashMap<Key, Pair<Long, Long>>()
+
+    private val isStale: Boolean
+        get() = SystemClock.elapsedRealtime() - lastTouched > 900
+
+    fun add(key: Key, rx: Long, tx: Long) {
+        peerBytes[key] = Pair.create(rx, tx)
+        lastTouched = SystemClock.elapsedRealtime()
+    }
+
+    fun peers(): Array<Key> {
+        return peerBytes.keys.toTypedArray()
+    }
+
+    fun peerRx(peer: Key): Long {
+        return if (!peerBytes.containsKey(peer)) 0 else peerBytes[peer]?.first ?: 0
+    }
+
+    fun peerTx(peer: Key): Long {
+        return if (!peerBytes.containsKey(peer)) 0 else peerBytes[peer]?.second ?: 0
+    }
+
+    fun totalRx(): Long {
+        var rx: Long = 0
+        for (`val` in peerBytes.values) {
+            rx += `val`.first
+        }
+        return rx
+    }
+
+    fun totalTx(): Long {
+        var tx: Long = 0
+        for (`val` in peerBytes.values) {
+            tx += `val`.second
+        }
+        return tx
+    }
 }

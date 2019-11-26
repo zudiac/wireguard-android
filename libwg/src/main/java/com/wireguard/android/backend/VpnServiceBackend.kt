@@ -37,6 +37,10 @@ class VpnServiceBackend : BackendNative {
         return wgVersion()
     }
 
+    fun getConfig(tunnel: Tunnel): String? {
+        return tunnel.tunnelHandle?.let { wgGetConfig(it) }
+    }
+
     interface VpnServiceDelegate {
         fun protect(socket: Int): Boolean
     }
