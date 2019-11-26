@@ -11,72 +11,60 @@ import android.net.VpnService
 import android.net.VpnService.prepare
 import android.os.SystemClock
 import android.util.Pair
-import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.Observer
-import androidx.lifecycle.ProcessLifecycleOwner
 import com.wireguard.config.Config
 import com.wireguard.crypto.Key
 import com.wireguard.crypto.KeyFormatException
-import java.util.HashMap
+import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
+import java.util.*
 
-class TunnelManager {
+class TunnelManager(
+    context: Context,
+    private val builderProvider: VpnBuilderProvider
+) {
 
-    val backend: VpnServiceBackend
-    val builderProvider: VpnBuilderProvider
-    val context: Context
+    private val appContext = context.applicationContext
+    private val backend: VpnServiceBackend = VpnServiceBackend(object: VpnServiceBackend.VpnServiceDelegate{
+        override fun protect(socket: Int): Boolean {
+            return currentService?.protect(socket) ?: false
+        }
+    })
+
     var currentTunnel: Tunnel? = null
-
-    companion object {
-        private val vpnService = MutableLiveData<VpnService>()
-    }
+    var currentService: VpnService? = null
 
     interface VpnBuilderProvider {
         fun patchBuilder(builder: android.net.VpnService.Builder): android.net.VpnService.Builder
     }
 
-    init {
-
-    }
-
-    constructor(context: Context, builderProvider: VpnBuilderProvider) {
-        this.backend = VpnServiceBackend(object: VpnServiceBackend.VpnServiceDelegate{
-            override fun protect(socket: Int): Boolean {
-                return vpnService.value?.protect(socket) ?: false
-            }
-        })
-        this.context = context.applicationContext
-        this.builderProvider = builderProvider
-    }
-
     fun tunnelDown() {
-        vpnService.value = null
+        currentTunnel?.let { backend.tunnelDown(it) }
+        currentService = null
     }
 
     fun tunnelUp(tunnel: Tunnel) {
         currentTunnel = tunnel
         val config = tunnel.config
 
-        vpnService.observe(ProcessLifecycleOwner.get(), object: Observer<VpnService>{
-            override fun onChanged(service: VpnService?) {
-                if(service == null){
-                    vpnService.removeObserver(this)
-                    currentTunnel?.apply { backend.tunnelDown(this) }
-                    return
+        GlobalScope.launch(Dispatchers.Main) {
+            currentService = serviceChannel.receive()
+            currentService?.Builder()?.apply {
+                builderProvider.patchBuilder(this)
+                applyConfig(config)
+                establish()?.let { fd ->
+                    backend.tunnelUp(tunnel, fd, config.toWgUserspaceString())
                 }
-
-                val builder = service.Builder()
-                builderProvider.patchBuilder(builder)
-                builder.applyConfig(config)
-                val tun = builder.establish() ?: return
-
-                backend.tunnelUp(tunnel, tun, config.toWgUserspaceString())
             }
+
+        }
+
+        appContext.startService(Intent(appContext, VpnService::class.java).apply {
+            putExtra(VpnService.EXTRA_COMMAND, VpnService.COMMAND_TURN_ON)
         })
-        context.startService(Intent(context, VpnService::class.java))
     }
 
     fun isGranted(): Boolean {
-        return prepare(context) == null
+        return prepare(appContext) == null
     }
 
     fun isConnected(): Boolean {
@@ -131,25 +119,36 @@ class TunnelManager {
         return stats
     }
 
-    public class VpnService : android.net.VpnService() {
-        val builder: Builder
-            get() {
-                return Builder()
+    class VpnService : android.net.VpnService() {
+        private val serviceJob = Job()
+        private val serviceScope = CoroutineScope(Dispatchers.Main + serviceJob)
+
+        override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+
+            when (intent?.getStringExtra(EXTRA_COMMAND) ?: "") {
+                COMMAND_TURN_ON -> turnOn()
             }
 
-        override fun onCreate() {
-            super.onCreate()
-            vpnService.value = this
+            return super.onStartCommand(intent, flags, startId)
         }
 
         override fun onDestroy() {
-            vpnService.value = null
+            serviceJob.cancel()
             super.onDestroy()
         }
 
-        override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-            return super.onStartCommand(intent, flags, startId)
+        private fun turnOn() = serviceScope.launch(Dispatchers.Main) {
+            serviceChannel.send(this@VpnService)
         }
+
+        companion object {
+            const val EXTRA_COMMAND = "command"
+            const val COMMAND_TURN_ON = "turn_on"
+        }
+    }
+
+    companion object {
+        private val serviceChannel = Channel<VpnService>()
     }
 }
 
