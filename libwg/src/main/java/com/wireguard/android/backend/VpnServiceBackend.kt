@@ -31,6 +31,7 @@ class VpnServiceBackend : BackendNative {
     fun tunnelDown(tunnel: Tunnel) {
         val socket = tunnel.tunnelHandle ?: return
         wgTurnOff(socket)
+        tunnel.tunnelHandle = null
     }
 
     fun getVersion(): String {
