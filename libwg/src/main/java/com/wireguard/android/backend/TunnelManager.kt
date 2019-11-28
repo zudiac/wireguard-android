@@ -33,6 +33,16 @@ class TunnelManager(
     var currentTunnel: Tunnel? = null
     var currentService: VpnService? = null
 
+    private var upTime = 0L
+    val upDuration: Long
+        get() {
+            return if (isConnected()) {
+                SystemClock.elapsedRealtime() - upTime
+            } else {
+                0L
+            }
+        }
+
     interface VpnBuilderProvider {
         fun patchBuilder(builder: android.net.VpnService.Builder): android.net.VpnService.Builder
     }
@@ -40,6 +50,7 @@ class TunnelManager(
     fun tunnelDown() {
         currentTunnel?.let { backend.tunnelDown(it) }
         currentService = null
+        upTime = 0L
     }
 
     fun tunnelUp(tunnel: Tunnel) {
@@ -53,9 +64,11 @@ class TunnelManager(
                 applyConfig(config)
                 establish()?.let { fd ->
                     backend.tunnelUp(tunnel, fd, config.toWgUserspaceString())
+                    if (upTime == 0L) {
+                        upTime = SystemClock.elapsedRealtime()
+                    }
                 }
             }
-
         }
 
         appContext.startService(Intent(appContext, VpnService::class.java).apply {
